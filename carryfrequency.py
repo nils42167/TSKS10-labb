@@ -41,7 +41,7 @@ def plot_fft(sample_rate: int, data: np.ndarray, max_plot_hz: float | None = Non
 		freqs = freqs[mask]
 		magnitude = magnitude[mask]
 
-	plt.figure(figsize=(10, 5))
+	fig = plt.figure(figsize=(10, 5))
 	plt.plot(freqs, magnitude, linewidth=1)
 	plt.title("FFT-spektrum för ljudfilen")
 	plt.xlabel("Frekvens (Hz)")
@@ -49,6 +49,7 @@ def plot_fft(sample_rate: int, data: np.ndarray, max_plot_hz: float | None = Non
 	plt.grid(True, alpha=0.3)
 	plt.tight_layout()
 	plt.show()
+	fig.savefig("carryfrequency_plot.pdf", bbox_inches="tight", pad_inches=0.0)
 
 
 if __name__ == "__main__":
