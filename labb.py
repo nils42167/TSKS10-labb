@@ -2,9 +2,10 @@ from pathlib import Path
 import winsound
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter, MultipleLocator
 import numpy as np
 from scipy.io import wavfile
-from scipy.signal import butter, sosfiltfilt
+from scipy.signal import butter, lfilter, sosfiltfilt
 
 
 def play_wav_file(wav_path: str | Path):
@@ -26,6 +27,27 @@ def to_mono_float(data: np.ndarray) -> np.ndarray:
 		signal = data
 
 	return signal.astype(np.float64)
+
+
+def filter(signal: np.ndarray, b: np.ndarray, a: np.ndarray = np.array([1.0])) -> np.ndarray:
+	"""Apply a linear filter to the signal."""
+	return lfilter(b, a, signal)
+
+
+def inverse_echo_filter(signal: np.ndarray, sample_rate: int,
+                        echo_delay_sec: float = 0.38,
+                        echo_gain: float = 0.5) -> np.ndarray:
+	"""Inverse filter a single echo at a given delay and gain."""
+	delay_samples = int(round(echo_delay_sec * sample_rate))
+	if delay_samples <= 0:
+		raise ValueError("Echo delay måste vara större än 0 sekunder.")
+
+	b = np.array([1.0], dtype=np.float64)
+	a = np.zeros(delay_samples + 1, dtype=np.float64)
+	a[0] = 1.0
+	a[-1] = echo_gain
+
+	return filter(signal, b, a)
 
 
 def iq_demodulate(sample_rate, data, carrier_hz=144_000.0,
@@ -95,6 +117,41 @@ def plot_fft(sample_rate: int, signal: np.ndarray, max_plot_hz: float = 20_000.0
     plt.tight_layout()
     plt.show()
 
+def plot_time_domain(sample_rate: int, signal: np.ndarray, title: str = "Signal i tidsdomänen",
+                     start_sec: float = 15.0, end_sec: float = 20.0, tick_sec: float = 0.1):
+    """Plotta en tidsdomänssektion av signalen med 0.1-sekunds markeringar."""
+    signal = np.asarray(signal, dtype=np.float64)
+
+    start_sample = int(start_sec * sample_rate)
+    end_sample = int(end_sec * sample_rate)
+    if start_sample < 0:
+        start_sample = 0
+    if end_sample > signal.size:
+        end_sample = signal.size
+
+    segment = signal[start_sample:end_sample]
+    n = len(segment)
+    t = np.arange(n) / sample_rate + start_sec
+
+    plt.figure(figsize=(12, 5))
+    plt.plot(t, segment, linewidth=0.7)
+    plt.title(title)
+    plt.xlabel("Tid (s)")
+    plt.ylabel("Amplitud")
+
+    ax = plt.gca()
+    ax.set_xlim(start_sec, end_sec)
+    ax.xaxis.set_major_locator(MultipleLocator(0.5))
+    ax.xaxis.set_minor_locator(MultipleLocator(0.1))
+    ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+    ax.tick_params(axis="x", which="major", labelsize=9, length=6)
+    ax.tick_params(axis="x", which="minor", labelsize=8, length=4)
+
+    plt.grid(True, which="major", alpha=0.5)
+    plt.grid(True, which="minor", alpha=0.2)
+    plt.tight_layout()
+    plt.show()
+
 if __name__ == "__main__":
     wav_path = Path(__file__).with_name("signal-NiBl88.wav")
 
@@ -113,11 +170,12 @@ if __name__ == "__main__":
     d = 0.8
     x_I, x_Q = rotate_iq(i_hat, q_hat, d)
 
-    # Välj x_I som signal att spara och analysera.
-    audio1 = x_I
-    audio2 = x_Q
-    out_name1 = f"Idemod_delta_{d:.2f}.wav"
-    out_name2 = f"Qdemod_delta_{d:.2f}.wav"
+    # Ta bort ekot genom inverse filtrering före analys och sparning.
+    audio1 = inverse_echo_filter(x_I, sample_rate, echo_delay_sec=0.38, echo_gain=0.5)
+    audio2 = inverse_echo_filter(x_Q, sample_rate, echo_delay_sec=0.38, echo_gain=0.5)
+
+    out_name1 = f"Idemod_delta_{d:.2f}_deechoed.wav"
+    out_name2 = f"Qdemod_delta_{d:.2f}_deechoed.wav"
     
     out_path1 = Path(__file__).with_name(out_name1)
     out_path2 = Path(__file__).with_name(out_name2)
@@ -130,3 +188,6 @@ if __name__ == "__main__":
 
     plot_fft(sample_rate, audio1, max_plot_hz=20_000.0)
     plot_fft(sample_rate, audio2, max_plot_hz=20_000.0)
+    
+    plot_time_domain(sample_rate, audio1, title=f"I-komponent (delta={d:.2f})")
+    plot_time_domain(sample_rate, audio2, title=f"Q-komponent (delta={d:.2f})")
