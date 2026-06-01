@@ -37,17 +37,22 @@ def filter(signal: np.ndarray, b: np.ndarray, a: np.ndarray = np.array([1.0])) -
 def inverse_echo_filter(signal: np.ndarray, sample_rate: int,
                         echo_delay_sec: float = 0.38,
                         echo_gain: float = 0.5) -> np.ndarray:
-	"""Inverse filter a single echo at a given delay and gain."""
+	"""Inverse filter a single echo at a given delay and gain using FFT."""
+	signal = np.asarray(signal, dtype=np.float64)
 	delay_samples = int(round(echo_delay_sec * sample_rate))
 	if delay_samples <= 0:
 		raise ValueError("Echo delay måste vara större än 0 sekunder.")
 
-	b = np.array([1.0], dtype=np.float64)
-	a = np.zeros(delay_samples + 1, dtype=np.float64)
-	a[0] = 1.0
-	a[-1] = echo_gain
+	# FFT-baserad motsvarighet till inversfilter: x[n] = y[n] - gain * x[n-delay]
+	n = len(signal)
+	fft_signal = np.fft.rfft(signal)
 
-	return filter(signal, b, a)
+	freqs = np.fft.rfftfreq(n, d=1.0 / sample_rate)
+	h = 1.0 / (1.0 + echo_gain * np.exp(-2j * np.pi * freqs * echo_delay_sec))
+	fft_filtered = fft_signal * h
+
+	filtered = np.fft.irfft(fft_filtered, n=n)
+	return filtered
 
 
 def iq_demodulate(sample_rate, data, carrier_hz=144_000.0,
